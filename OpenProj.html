@@ -1,0 +1,399 @@
+<!--Anlan Du
+CSC630 Period 3
+Dr. Zufelt
+Open Project: Presidential Debate Analysis
+11-10-17-->
+<!DOCTYPE=html>
+<html>
+<head>
+  <meta charset= 'utf-8'>
+  <title>Presidential Debate Text and Data Analysis</title>
+  <link href="styles.css" type="text/css" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <h1>Presidential Debate Analysis</h1>
+  </header>
+</body>
+<div id="containerTop">
+</div>
+<div id="containerBottom">
+</div>
+<div id="paraDiv">
+  <p id="intro">
+    Welcome to my visualization of the 2016 Clinton-Trump Presidential Debates!
+    Each bar represents a speech, positioned on the x-axis chronologically and on the
+    y-axis according to its calculated sentiment (more positive number means more positive
+    content, and vice versa). Mouse over a bar to see the speech itself, as well as
+    information about its speaker. An interruption is indicated in the transcripts by an ellipses
+    appearing in place of a period at the end of a line. At the top, you can toggle between debates.
+    Hopefully the trends you find will prove enlightening!
+  </p>
+  <p id="paragraphArea">
+  </p>
+</div>
+<script src='https://d3js.org/d3.v4.min.js'></script>
+<script>
+windowWidth=window.innerWidth;
+const margin = {
+  top: 40,
+  bottom: 50,
+  left: 60,
+  right: 60,
+}, width = windowWidth-30,
+  height = 300;
+  currNum=1;
+
+  //set the container to scroll any overflow, enabling user to scroll graph without
+  //scrolling rest of window
+  d3.select("#containerTop")
+    .style("overflow","scroll")
+    .style("overflow-y", "hidden")
+    .style("width",width)
+    .style("height",height+margin.bottom);
+
+  //append SVGs for the graph area and the text area
+  //(note the graph area will be wider, to enable a more detailed view of the chart)
+  var topSvg=d3.select("#containerTop")
+    .append("svg")
+    .attr("width",width*3)
+    .attr("height",height+margin.bottom-20)
+    .style("margin","0 auto")
+    .style("display","block")
+
+
+  //append color legend
+  var legend=topSvg.append("g")
+    .attr("transform",`translate(${margin.left*1.15},${height*.71})`);
+
+  legend.append("rect")
+    .attr("width",90)
+    .attr("height",70)
+    .attr("stroke","#000000")
+    .attr("fill","none")
+  legend.append("rect")
+    .attr("width",10)
+    .attr("height",10)
+    .attr("fill","#FF0000")
+    .attr("x",10)
+    .attr("y",10)
+  legend.append("rect")
+    .attr("width",10)
+    .attr("height",10)
+    .attr("fill","#0000FF")
+    .attr("x",10)
+    .attr("y",30)
+  legend.append("rect")
+    .attr("width",10)
+    .attr("height",10)
+    .attr("fill","#00FF00")
+    .attr("x",10)
+    .attr("y",50)
+  legend.append("text")
+    .attr("class","legend")
+    .text("= Trump")
+    .attr("x",25)
+    .attr("y",10)
+  legend.append("text")
+    .attr("class","legend")
+    .text("= Clinton")
+    .attr("x",25)
+    .attr("y",30)
+  legend.append("text")
+    .attr("class","legend")
+    .text("= Moderator")
+    .attr("x",25)
+    .attr("y",50)
+
+  var bottomSvg=d3.select("#containerBottom")
+    .append("svg")
+    .attr("width",width)
+    .attr("height",height*2+margin.bottom)
+    .style("margin","0 auto")
+    .style("display","block")
+
+  //append a text area in which to put common words and other info
+  var textArea=bottomSvg.append("text")
+    .attr("transform", `translate(${width*.5+margin.left+margin.right*2}, ${margin.top})`)
+    .attr("id","wordsArea");
+
+  d3.select("#paraDiv")
+    .style("top",height+margin.top*2+margin.bottom);
+  //initialize display
+  appendButton(1);
+  appendButton(2);
+  appendButton(3);
+  loadDebate(true);
+  //******* Import debate data *******
+  function loadDebate(firstTime) {
+    d3.csv(`http://localhost:8000/debate${currNum}.csv`, function(error, speechData) {
+      d3.csv(`http://localhost:8000/speakData${currNum}.csv`, function(error, speakerData) {
+        //convert strings into ints
+        speechData.forEach(function(d,i){
+          d.startInd=+d.startInd;
+          d.endInd=+d.endInd;
+          d.interrupted=+d.interrupted;
+          d.numWords=+d.numWords;
+          d.numChars=+d.numChars;
+          d.numSents=+d.numSents;
+          d.avgWordLen=+d.avgWordLen;
+          d.avgSentLen=+d.avgSentLen;
+          d.sentiment=+d.sentiment;
+        })
+        speakerData.forEach(function(d,i){
+          d.numSpeeches=+d.numSpeeches;
+          d.avgWordsPerSpeech=+d.avgWordsPerSpeech;
+          d.avgWordLen=+d.avgWordLen;
+          d.avgSentLen=+d.avgSentLen;
+          d.sentiment=+d.sentiment;
+        })
+
+        //******* Add Scales for x and y axes *******
+        var x=d3.scaleLinear()
+          .domain([0, speechData[speechData.length-1].endInd])
+          .range([margin.left, margin.left+width*3-margin.right]);
+        var y=d3.scaleLinear()
+          .domain(d3.extent(speechData, function(d) { return d.sentiment }))
+          .range([height-margin.bottom+margin.top,margin.top])
+
+        //******* Append axes if non-existent *******
+        if (firstTime) {
+        var xAxis=topSvg.append("g")
+          .attr("transform",`translate(${0}, ${height+margin.top-margin.bottom})`)
+          .attr("class","xAxis")
+          .call(d3.axisBottom(x));
+        var yAxis=topSvg.append("g")
+          .attr("transform",`translate(${margin.left}, ${0})`)
+          .attr("class","yAxis")
+          .attr("id","y0")
+          .call(d3.axisLeft(y));
+        } else {
+          // ******* Update axes if they exist *******
+          // change the x axis
+          topSvg.select(".xAxis")
+            .transition()
+            .duration(550)
+            .call(d3.axisBottom(x));
+
+          // change the y axis
+          topSvg.select(".yAxis")
+            .transition()
+            .duration(550)
+            .call(d3.axisLeft(y));
+        }
+
+        //******* Append axis labels *******
+        if (firstTime) {
+          d3.select(".xAxis")
+            .append("text")
+            .attr("class","axisLabel")
+            .attr("transform", `translate(${width*.25+margin.left}, ${margin.bottom/2})`)
+            .style("fill", "#000000")
+            .text("Speech's chronological position (by character position)");
+          d3.select(".yAxis")
+            .append("text")
+            .attr("class","axisLabel")
+            .attr("transform", `translate(${-margin.left/2},
+              ${height/2+margin.top/2}) rotate(-90)`)
+            .text("Sentiment Level (Higher magnitude=stronger sentiment)");
+        }
+        //******* Append chart lines for avg sentence length and num sentences *******
+        topSvg.selectAll(".dataLine")
+          .remove();
+
+        topSvg.selectAll(".dataLine")
+          .data(speechData)
+          .enter()
+          .append("line")
+          .attr("class","dataLine")
+          .attr("x1", function(d) {return x(d.startInd)})
+          .attr("x2", function(d) {return x(d.endInd)})
+          .attr("y1", function(d) {return y(d.sentiment)})
+          .attr("y2", function(d) {return y(d.sentiment)})
+          .attr("stroke-width", 7)
+          .style("stroke", function(d) { //color according to who is speaking
+            console.log(d.speaker)
+            if (d.speaker=="TRUMP") {
+              return "#FF0000";
+            } else if (d.speaker=="CLINTON") {
+              return "#0000FF";
+            } else {
+              return "#00FF00";
+            }
+          })
+          .on("mouseover", function(d) {
+            d3.select(this)
+              .transition()
+              .duration(200)
+              .attr("stroke-width",10)
+            //on mouseover, display info for the speaker of the speech
+            name=d.speaker.substring(0,1)+d.speaker.substring(1).toLowerCase();
+            updateWords(name);
+            //also display speech itself
+            d3.select("#paragraphArea").text("\""+d.speechText+"\"");
+          })
+          .on("mouseout", function(d) {
+            d3.select(this)
+              .transition()
+              .duration(200)
+              .attr("stroke-width",7)
+          });
+
+          //******* Updates common words and other info given a debate number *******
+          //gives each speaker a default color and index, in accordance with previous
+          //datasets and/or color conventions
+          function updateWords(speaker) {
+            spInd=0;
+            color="#FFFFFF"
+            if (speaker=="Trump") {
+              spInd=0;
+              color="#FF0000"
+            } else if (speaker=="Clinton") {
+              spInd=1;
+              color="#0000FF"
+            } else {
+              spInd=2;
+              speaker="Moderator";
+              color="#00FF00"
+            }
+            d3.csv(`http://localhost:8000/${speaker.toLowerCase()}dict${currNum}.csv`, function(error, speakerCommon) {
+              //Update the displayed debate number, # of sentences, etc.
+              textArea.selectAll(".speakInfo")
+              .remove();
+
+              textArea.append("tspan")
+              .attr("class","speakInfo")
+              .attr("x",0)
+              .attr("y",10)
+              .style("font-size", "30px")
+              .style("fill", color)
+              .text(`${speaker}: Talked ${speakerData[spInd].numSpeeches} times`);
+
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 35)
+              .text(`Was interrupted ${speakerData[spInd].interrupted} times`);
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 55)
+              .text(`Average ${speakerData[spInd].avgWordsPerSpeech.toFixed(2)} words per speech`);
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 75)
+              .text(`Average ${speakerData[spInd].avgSentLen.toFixed(2)} words per sentence`);
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 95)
+              .text(`Average ${speakerData[spInd].avgWordLen.toFixed(2)} letters per word`);
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 115)
+              .text(`Average sentiment (level of positivity corresponds to sign): ${speakerData[spInd].sentiment.toFixed(4)}`);
+              textArea.append("tspan")
+              .attr("class", "speakInfo")
+              .attr("x",0)
+              .attr("y", 140)
+              .style("font-size", "20px")
+              .text(`Common Words in Debate ${currNum}:`);
+
+              //Updates the common words using the word as a key function
+              var words=textArea.selectAll(".word")
+              .data(speakerCommon, function(d) { return d.word; })
+
+              //Remove exited words, turning them red and sending them to right
+              words.exit()
+              .style("fill-opacity",1.0)
+              .attr("fill","#FF0000")
+              .transition()
+              .duration(450)
+              .attr("x",1000)
+              .style("fill-opacity",0)
+              .remove();
+
+              //Updates position and displayed number for remaining words
+              words.transition()
+              .duration(450)
+              .attr("x", function(d,i) {return 150*Math.floor(i/20) })
+              .attr("y", function(d,i) { console.log(i);return 160+(i%20)*20})
+              .text(function(d) {return `${d.word} (${d.freq})`})
+              .attr("fill","#000000")
+
+              //Adds new words, summoning from left and displaying as green
+              words.enter()
+              .append("tspan")
+              .attr("class","word")
+              .style("fill-opacity",0.0)
+              .attr("y", function(d,i) { return 160+(i%20)*20 })
+              .attr("fill","#007e00")
+              .attr("x",-400)
+              .transition()
+              .duration(450)
+              .style("fill-opacity",1.0)
+              .attr("x", function(d,i) {return 150*Math.floor(i/20) })
+              .text(function(d) {return `${d.word} (${d.freq})`})
+
+            })
+          }
+      })
+    })
+  }
+  // ******* Function to append buttons for selecting each debate *******
+  function appendButton(num) {
+    bottomSvg.append("g")
+    .attr("id","button"+num)
+    .attr("cursor", "pointer")
+    .attr("transform", `translate(${margin.left+250*(num-1)},${margin.top/4})`)
+    .on("mouseover", function() {
+      d3.select("#button"+num).select("rect")
+      .style("fill-opacity", 0.6);
+    })
+    .on("mouseout", function() {
+      d3.select("#button"+num).select("rect")
+      .style("fill-opacity", function(d) {
+        if (currNum==num) {
+          return 0.6;
+        } else {
+        return 0.4;
+      }})
+    })
+    // onclick, change graph to display selected debate
+    .on("click", function() {
+      if (currNum!=num) {
+        currNum=num;
+        loadDebate();
+      }
+      d3.selectAll(".buttonRect")
+        .style("fill-opacity", 0.4)
+      d3.select(this).select(".buttonRect")
+        .style("fill-opacity", 0.6)
+    })
+    //button rectangle
+    d3.select("#button"+num)
+    .append("rect")
+    .attr("width", 250)
+    .attr("height", 30)
+    .attr("class", "buttonRect")
+    .style("fill", "#7aff9c")
+    .style("fill-opacity", function(d) {
+      if (currNum==num) {
+        return 0.6;
+      } else {
+      return 0.4;
+    }});
+    //button text
+    d3.select("#button"+num)
+    .append("text")
+    .attr("transform","translate(125,15)")
+    .attr("class", "buttonText")
+    .text(`Show Debate Number ${num}!`);
+
+  }
+
+</script>
+
+</html>
